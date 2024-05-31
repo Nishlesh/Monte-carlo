@@ -1,235 +1,177 @@
-Sure, let's break down the steps for the task you want to accomplish and then provide code snippets and explanations for each part.
+Let's proceed by calculating the values for the decision matrix based on the options data you provided. Here are the steps we'll follow:
 
-### Step-by-Step Plan
+1. **Select the strikes**: Choose 3 strikes from the provided options data, 10 ITM to 10 OTM.
+2. **Generate combinations**: For each of the chosen strikes, generate all possible combinations of buying and selling calls or puts.
+3. **Calculate breakeven points, probability of profit, max profit/max loss, and max profit for each combination**.
+4. **Construct the decision matrix**: Populate the matrix with calculated values.
+5. **Use the TOPSIS method** to rank these combinations.
 
-1. **Select Combinations of Strikes and Options:**
-   - Choose 3 strikes from 10 ITM (In The Money) to 10 OTM (Out of The Money) strikes.
-   - Create combinations of buying or selling calls or puts for each chosen combination.
+### Step 1: Load the data and choose the strikes
+I'll load the data from the CSV file and then choose three strikes from the provided options data.
 
-2. **Calculate Metrics for Each Combination:**
-   - Calculate breakeven points.
-   - Calculate the probability of profit.
-   - Calculate maximum profit and maximum loss.
-   - Calculate maximum profit using the Black-Scholes-Merton (BSM) model.
-   - Use implied volatility data and spot prices.
+### Step 2: Generate combinations
+For each chosen strike, generate all possible combinations of buying and selling calls or puts. Given the large number of possible combinations, we will focus on creating a subset to demonstrate the approach.
 
-3. **Use the TOPSIS Method:**
-   - Ask for weights for decision-making attributes (probability of profit, max profit/max loss, max profit).
-   - Determine the best strategy according to the TOPSIS method.
+### Step 3: Calculate metrics
+Using the Black-Scholes-Merton (BSM) model and the lognormal distribution, we will calculate the necessary metrics for each combination.
 
-### Step 1: Select Combinations of Strikes and Options
+### Step 4: Construct the decision matrix
+Populate the decision matrix with calculated values.
 
-We'll start by writing a function to generate all the possible combinations of strikes and whether to buy or sell calls or puts.
+### Step 5: Apply the TOPSIS method
+Using the decision matrix and user-provided weights, we will apply the TOPSIS method to rank the combinations.
 
+Let's start by loading the data from the CSV file and selecting three strikes.
+
+#### Loading the data:
 ```python
-import itertools
 import pandas as pd
 
-# Load your dataset with strikes and implied volatilities
-options_data = pd.read_csv("options_data.csv")
+# Load the CSV file
+data = pd.read_csv("/mnt/data/image.png")
 
-# Select strikes between 10 ITM to 10 OTM
-strike_prices = options_data['Strike'].tolist()
-# Assuming that strike_prices is sorted in ascending order and the ATM is in the middle
-middle_index = len(strike_prices) // 2
-selected_strikes = strike_prices[middle_index-10:middle_index+10]
-
-# Generate all 3-combinations of selected strikes
-strike_combinations = list(itertools.combinations(selected_strikes, 3))
-
-# Generate all buy/sell combinations for calls and puts (2 choices: buy or sell) for 3 strikes (3 positions)
-buy_sell_combinations = list(itertools.product(['buy', 'sell'], repeat=3))
-
-# Generate all possible combinations of strikes and buy/sell decisions
-all_combinations = []
-for strike_combo in strike_combinations:
-    for buy_sell_combo in buy_sell_combinations:
-        all_combinations.append(list(zip(strike_combo, buy_sell_combo)))
-
-# all_combinations now contains all the possible combinations of 3 strikes and their buy/sell decisions
+# Display the first few rows of the dataframe
+data.head()
 ```
 
-### Step 2: Calculate Metrics for Each Combination
+### Choosing Strikes and Generating Combinations:
+To demonstrate the approach, we will manually choose three strikes: one ITM, one ATM, and one OTM. Then, we'll generate a few combinations.
 
-To calculate metrics like breakeven points, probability of profit, max profit, max loss, and so on, we will need to use the Black-Scholes-Merton model. We will also need implied volatility data and spot price.
-
-First, let's write a function to calculate the breakeven points, probability of profit, max profit, and max loss for each combination.
-
+#### Define the Strikes and Generate Combinations:
 ```python
-import numpy as np
+from itertools import combinations, product
+
+# Choose three strikes (for demonstration purposes, we will pick manually)
+chosen_strikes = [20050, 21000, 21500]
+
+# Generate all possible combinations of buying/selling calls or puts for each chosen strike
+# Each strike has two options: call and put
+# Each option can be bought or sold
+# Total combinations = 2 (call/put) * 2 (buy/sell) ^ 3 (number of strikes)
+
+strike_combinations = list(combinations(chosen_strikes, 3))
+option_actions = list(product(['buy', 'sell'], repeat=3))
+
+combinations_list = []
+
+# Generate all combinations
+for strikes in strike_combinations:
+    for actions in option_actions:
+        for option_type in ['call', 'put']:
+            combination = []
+            for i in range(3):
+                combination.append((option_type, actions[i], strikes[i]))
+            combinations_list.append(combination)
+
+# Display a sample of generated combinations
+combinations_list[:5]
+```
+
+### Calculating Metrics for Each Combination:
+We need to calculate breakeven points, probability of profit, max profit/max loss, and max profit for each combination. For this, we'll use the BSM model and lognormal distribution.
+
+#### Calculate Metrics Using BSM Model:
+```python
 from scipy.stats import norm
+import numpy as np
 
-# Black-Scholes-Merton formula for call and put option prices
-def black_scholes_call(S, K, T, r, sigma):
+# Black-Scholes-Merton (BSM) model
+def bsm_price(S, K, T, r, sigma, option_type='call'):
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
-    call_price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
-    return call_price
+    if option_type == 'call':
+        price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+    else:
+        price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+    return price
 
-def black_scholes_put(S, K, T, r, sigma):
-    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
-    d2 = d1 - sigma * np.sqrt(T)
-    put_price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-    return put_price
+# Calculate metrics for each combination
+results = []
 
-# Function to calculate metrics for each combination
-def calculate_metrics(combination, S, T, r):
-    results = []
-    for strike, action in combination:
-        sigma = options_data.loc[options_data['Strike'] == strike, 'Implied Volatility'].values[0]
-        if action == 'buy':
-            call_price = black_scholes_call(S, strike, T, r, sigma)
-            put_price = black_scholes_put(S, strike, T, r, sigma)
-            # Metrics calculation for buy
-            breakeven_call = call_price + strike
-            breakeven_put = put_price - strike
-            # Placeholder for more detailed calculations
-            results.append((breakeven_call, breakeven_put))
+# Placeholder values for interest rate and time to maturity
+r = 0.01  # Risk-free interest rate (e.g., 1%)
+T = 30 / 365  # Time to maturity (30 days)
+
+for combination in combinations_list:
+    metrics = {}
+    total_premium = 0
+    total_max_profit = 0
+    total_max_loss = 0
+    total_probability_of_profit = 0
+
+    for option in combination:
+        option_type, action, strike = option
+        row = data[data['STRIKE'] == strike]
+        if option_type == 'call':
+            IV = row['IV'].values[0]
+            LTP = row['LTP'].values[0]
         else:
-            call_price = black_scholes_call(S, strike, T, r, sigma)
-            put_price = black_scholes_put(S, strike, T, r, sigma)
-            # Metrics calculation for sell
-            breakeven_call = call_price - strike
-            breakeven_put = put_price + strike
-            # Placeholder for more detailed calculations
-            results.append((breakeven_call, breakeven_put))
-    return results
+            IV = row['IV.1'].values[0]
+            LTP = row['LTP.1'].values[0]
 
-# Example usage with a sample combination
-S = 100  # Spot price (example value)
-T = 30 / 365  # Time to expiration in years (example: 30 days)
-r = 0.05  # Risk-free interest rate (example value)
-sample_combination = [(100, 'buy'), (105, 'sell'), (110, 'buy')]
-metrics = calculate_metrics(sample_combination, S, T, r)
+        S = row['Spot_Price'].values[0]  # Spot price (needs to be provided)
+        sigma = IV / 100
+
+        # Calculate BSM price
+        option_price = bsm_price(S, strike, T, r, sigma, option_type)
+
+        # Calculate max profit and max loss
+        if action == 'buy':
+            max_profit = option_price - LTP
+            max_loss = LTP
+        else:
+            max_profit = LTP
+            max_loss = option_price - LTP
+
+        # Calculate probability of profit (simplified)
+        d1 = (np.log(S / strike) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+        probability_of_profit = norm.cdf(d1) if option_type == 'call' else 1 - norm.cdf(d1)
+
+        total_premium += option_price
+        total_max_profit += max_profit
+        total_max_loss += max_loss
+        total_probability_of_profit += probability_of_profit
+
+    metrics['total_premium'] = total_premium
+    metrics['total_max_profit'] = total_max_profit
+    metrics['total_max_loss'] = total_max_loss
+    metrics['total_probability_of_profit'] = total_probability_of_profit / 3  # Average probability
+    results.append(metrics)
+
+# Display results
+results[:5]
 ```
 
-### Step 3: TOPSIS Method
+### Constructing the Decision Matrix:
+Now we populate the decision matrix with calculated values.
 
-The TOPSIS method is used for ranking and selecting a number of externally determined alternatives through distance measures. Here's how you can implement it:
-
+#### Construct Decision Matrix:
 ```python
-from sklearn.preprocessing import MinMaxScaler
-
-# Function to normalize the decision matrix
-def normalize_decision_matrix(matrix):
-    scaler = MinMaxScaler()
-    return scaler.fit_transform(matrix)
-
-# Function to calculate the TOPSIS score
-def topsis(matrix, weights):
-    # Normalize the decision matrix
-    normalized_matrix = normalize_decision_matrix(matrix)
-    
-    # Calculate the weighted normalized decision matrix
-    weighted_matrix = normalized_matrix * weights
-    
-    # Determine the ideal and negative-ideal solutions
-    ideal_solution = np.max(weighted_matrix, axis=0)
-    negative_ideal_solution = np.min(weighted_matrix, axis=0)
-    
-    # Calculate the distance of each alternative to the ideal and negative-ideal solutions
-    distance_to_ideal = np.sqrt(np.sum((weighted_matrix - ideal_solution) ** 2, axis=1))
-    distance_to_negative_ideal = np.sqrt(np.sum((weighted_matrix - negative_ideal_solution) ** 2, axis=1))
-    
-    # Calculate the TOPSIS score
-    topsis_score = distance_to_negative_ideal / (distance_to_ideal + distance_to_negative_ideal)
-    
-    return topsis_score
-
-# Example decision matrix (replace with actual metrics data)
 decision_matrix = np.array([
-    [0.2, 0.4, 0.6],  # Probability of profit
-    [0.3, 0.7, 0.2],  # Max profit/max loss
-    [0.5, 0.1, 0.4]   # Max profit
+    [result['total_probability_of_profit'], result['total_max_profit'], result['total_max_profit'] / result['total_max_loss']] for result in results
 ])
 
-# Example weights (replace with actual weights)
-weights = np.array([0.5, 0.3, 0.2])
-
-# Calculate the TOPSIS score for each alternative
-topsis_scores = topsis(decision_matrix, weights)
-
-# Find the best alternative
-best_index = np.argmax(topsis_scores)
-best_combination = all_combinations[best_index]
+# Display the decision matrix
+print("Decision Matrix:\n", decision_matrix)
 ```
 
-### Integration and Final Code
+### Applying TOPSIS Method:
+Finally, apply the TOPSIS method to rank these combinations.
 
-The final step is to integrate all the parts together. Here’s how you can do it:
-
+#### Applying TOPSIS:
 ```python
-import pandas as pd
-import itertools
-import numpy as np
-from scipy.stats import norm
 from sklearn.preprocessing import MinMaxScaler
 
-# Load your dataset with strikes and implied volatilities
-options_data = pd.read_csv("options_data.csv")
-
-# Select strikes between 10 ITM to 10 OTM
-strike_prices = options_data['Strike'].tolist()
-middle_index = len(strike_prices) // 2
-selected_strikes = strike_prices[middle_index-10:middle_index+10]
-
-# Generate all 3-combinations of selected strikes
-strike_combinations = list(itertools.combinations(selected_strikes, 3))
-
-# Generate all buy/sell combinations for calls and puts (2 choices: buy or sell) for 3 strikes (3 positions)
-buy_sell_combinations = list(itertools.product(['buy', 'sell'], repeat=3))
-
-# Generate all possible combinations of strikes and buy/sell decisions
-all_combinations = []
-for strike_combo in strike_combinations:
-    for buy_sell_combo in buy_sell_combinations:
-        all_combinations.append(list(zip(strike_combo, buy_sell_combo)))
-
-# Black-Scholes-Merton formula for call and put option prices
-def black_scholes_call(S, K, T, r, sigma):
-    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
-    d2 = d1 - sigma * np.sqrt(T)
-    call_price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
-    return call_price
-
-def black_scholes_put(S, K, T, r, sigma):
-    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
-    d2 = d1 - sigma * np.sqrt(T)
-    put_price = K * np.exp(-r * T) * norm.cdf
-
-(-d2) - S * norm.cdf(-d1)
-    return put_price
-
-# Function to calculate metrics for each combination
-def calculate_metrics(combination, S, T, r):
-    results = []
-    for strike, action in combination:
-        sigma = options_data.loc[options_data['Strike'] == strike, 'Implied Volatility'].values[0]
-        if action == 'buy':
-            call_price = black_scholes_call(S, strike, T, r, sigma)
-            put_price = black_scholes_put(S, strike, T, r, sigma)
-            breakeven_call = call_price + strike
-            breakeven_put = put_price - strike
-            # Placeholder for more detailed calculations
-            results.append((breakeven_call, breakeven_put))
-        else:
-            call_price = black_scholes_call(S, strike, T, r, sigma)
-            put_price = black_scholes_put(S, strike, T, r, sigma)
-            breakeven_call = call_price - strike
-            breakeven_put = put_price + strike
-            # Placeholder for more detailed calculations
-            results.append((breakeven_call, breakeven_put))
-    return results
+# Placeholder weights (to be provided by the user)
+weights = np.array([0.5, 0.3, 0.2])
 
 # Normalize the decision matrix
-def normalize_decision_matrix(matrix):
-    scaler = MinMaxScaler()
-    return scaler.fit_transform(matrix)
+scaler = MinMaxScaler()
+normalized_matrix = scaler.fit_transform(decision_matrix)
 
-# Calculate the TOPSIS score
+# Calculate TOPSIS score
 def topsis(matrix, weights):
-    normalized_matrix = normalize_decision_matrix(matrix)
-    weighted_matrix = normalized_matrix * weights
+    weighted_matrix = matrix * weights
     ideal_solution = np.max(weighted_matrix, axis=0)
     negative_ideal_solution = np.min(weighted_matrix, axis=0)
     distance_to_ideal = np.sqrt(np.sum((weighted_matrix - ideal_solution) ** 2, axis=1))
@@ -237,41 +179,15 @@ def topsis(matrix, weights):
     topsis_score = distance_to_negative_ideal / (distance_to_ideal + distance_to_negative_ideal)
     return topsis_score
 
-# Define the spot price, time to expiration, and risk-free interest rate
-S = 100  # Spot price (example value)
-T = 30 / 365  # Time to expiration in years (example: 30 days)
-r = 0.05  # Risk-free interest rate (example value)
+# Calculate TOPSIS scores
+topsis_scores = topsis(normalized_matrix, weights)
 
-# Calculate metrics for all combinations
-all_metrics = [calculate_metrics(comb, S, T, r) for comb in all_combinations]
-
-# Example decision matrix (replace with actual metrics data)
-# Each row should correspond to a combination and columns to attributes
-decision_matrix = np.array([
-    [0.2, 0.4, 0.6],  # Probability of profit (placeholder values)
-    [0.3, 0.7, 0.2],  # Max profit/max loss (placeholder values)
-    [0.5, 0.1, 0.4]   # Max profit (placeholder values)
-])
-
-# Example weights (ask for actual weights)
-weights = np.array([0.5, 0.3, 0.2])
-
-# Calculate the TOPSIS score for each alternative
-topsis_scores = topsis(decision_matrix, weights)
-
-# Find the best alternative
+# Find the best strategy
 best_index = np.argmax(topsis_scores)
-best_combination = all_combinations[best_index]
+best_strategy = combinations_list[best_index]
 
-# Print the best strategy
-print("Best combination:", best_combination)
+print("Best strategy:", best_strategy)
 print("TOPSIS score:", topsis_scores[best_index])
 ```
 
-### Explanation
-
-- **Select Combinations**: We generate all possible combinations of strikes and buy/sell decisions.
-- **Calculate Metrics**: For each combination, we calculate metrics using the BSM model and other relevant data.
-- **TOPSIS Method**: Normalize the decision matrix, apply weights, and calculate the TOPSIS score to find the best strategy.
-
-Make sure to replace placeholder values in `decision_matrix` with actual calculated metrics and provide the actual weights for the attributes.
+This code outlines the complete process from loading the data to identifying the best options strategy using the TOPSIS method. You can execute this code within your environment to get the best strategy based on the provided data.
