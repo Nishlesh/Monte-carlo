@@ -1,80 +1,79 @@
-Let's proceed by calculating the values for the decision matrix based on the options data you provided. Here are the steps we'll follow:
+Let's proceed with generating all possible combinations without restricting to a subset. We'll use the provided spot price of 22,948 for our calculations. The approach remains the same, but we will consider all combinations of the selected strikes.
 
-1. **Select the strikes**: Choose 3 strikes from the provided options data, 10 ITM to 10 OTM.
-2. **Generate combinations**: For each of the chosen strikes, generate all possible combinations of buying and selling calls or puts.
-3. **Calculate breakeven points, probability of profit, max profit/max loss, and max profit for each combination**.
-4. **Construct the decision matrix**: Populate the matrix with calculated values.
-5. **Use the TOPSIS method** to rank these combinations.
+### Step-by-Step Process:
 
-### Step 1: Load the data and choose the strikes
-I'll load the data from the CSV file and then choose three strikes from the provided options data.
+1. **Select strikes**: Choose 3 strikes each from 10 ITM to 10 OTM around the spot price.
+2. **Generate all combinations**: Create combinations of buying or selling calls or puts for the selected strikes.
+3. **Calculate metrics**: Compute breakeven points, probability of profit, max profit, and max profit/max loss ratio for each combination.
+4. **Construct the decision matrix**: Populate it with calculated values.
+5. **Apply TOPSIS method**: Rank these combinations using the provided weights.
 
-### Step 2: Generate combinations
-For each chosen strike, generate all possible combinations of buying and selling calls or puts. Given the large number of possible combinations, we will focus on creating a subset to demonstrate the approach.
+### Step 1: Select Strikes
 
-### Step 3: Calculate metrics
-Using the Black-Scholes-Merton (BSM) model and the lognormal distribution, we will calculate the necessary metrics for each combination.
+We'll choose strikes 10 ITM to 10 OTM around the ATM strike (22,950).
 
-### Step 4: Construct the decision matrix
-Populate the decision matrix with calculated values.
+### Step 2: Generate All Combinations
 
-### Step 5: Apply the TOPSIS method
-Using the decision matrix and user-provided weights, we will apply the TOPSIS method to rank the combinations.
+Each combination will consist of either buying or selling calls or puts.
 
-Let's start by loading the data from the CSV file and selecting three strikes.
+### Step 3: Calculate Metrics
 
-#### Loading the data:
+We'll use the Black-Scholes-Merton (BSM) model and the lognormal distribution to calculate the necessary metrics.
+
+### Step 4: Construct the Decision Matrix
+
+### Step 5: Apply TOPSIS Method
+
+Now, let's implement these steps in code.
+
+### Implementing the Steps:
+
+#### Load the Data:
 ```python
 import pandas as pd
+from itertools import combinations, product
+from scipy.stats import norm
+import numpy as np
 
 # Load the CSV file
-data = pd.read_csv("/mnt/data/image.png")
+data = pd.read_csv("/mnt/data/options_data.csv")
 
-# Display the first few rows of the dataframe
-data.head()
+# Spot price
+spot_price = 22948
+
+# Select strikes around the ATM strike (22,950)
+atm_strike = 22950
+strikes = data['STRIKE'].unique()
+itm_strikes = sorted([strike for strike in strikes if strike < atm_strike])[-10:]
+otm_strikes = sorted([strike for strike in strikes if strike > atm_strike])[:10]
+selected_strikes = itm_strikes + [atm_strike] + otm_strikes
+
+# Display the selected strikes
+selected_strikes
 ```
 
-### Choosing Strikes and Generating Combinations:
-To demonstrate the approach, we will manually choose three strikes: one ITM, one ATM, and one OTM. Then, we'll generate a few combinations.
-
-#### Define the Strikes and Generate Combinations:
+#### Generate All Combinations:
 ```python
-from itertools import combinations, product
-
-# Choose three strikes (for demonstration purposes, we will pick manually)
-chosen_strikes = [20050, 21000, 21500]
-
-# Generate all possible combinations of buying/selling calls or puts for each chosen strike
-# Each strike has two options: call and put
-# Each option can be bought or sold
-# Total combinations = 2 (call/put) * 2 (buy/sell) ^ 3 (number of strikes)
-
-strike_combinations = list(combinations(chosen_strikes, 3))
+# Generate all possible combinations of buying/selling calls or puts for each selected strike
 option_actions = list(product(['buy', 'sell'], repeat=3))
 
 combinations_list = []
 
 # Generate all combinations
-for strikes in strike_combinations:
+for strikes_comb in combinations(selected_strikes, 3):
     for actions in option_actions:
         for option_type in ['call', 'put']:
             combination = []
             for i in range(3):
-                combination.append((option_type, actions[i], strikes[i]))
+                combination.append((option_type, actions[i], strikes_comb[i]))
             combinations_list.append(combination)
 
-# Display a sample of generated combinations
-combinations_list[:5]
+# Display the number of generated combinations
+len(combinations_list)
 ```
 
-### Calculating Metrics for Each Combination:
-We need to calculate breakeven points, probability of profit, max profit/max loss, and max profit for each combination. For this, we'll use the BSM model and lognormal distribution.
-
-#### Calculate Metrics Using BSM Model:
+#### Calculate Metrics for Each Combination:
 ```python
-from scipy.stats import norm
-import numpy as np
-
 # Black-Scholes-Merton (BSM) model
 def bsm_price(S, K, T, r, sigma, option_type='call'):
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
@@ -85,12 +84,11 @@ def bsm_price(S, K, T, r, sigma, option_type='call'):
         price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
     return price
 
-# Calculate metrics for each combination
-results = []
-
 # Placeholder values for interest rate and time to maturity
 r = 0.01  # Risk-free interest rate (e.g., 1%)
 T = 30 / 365  # Time to maturity (30 days)
+
+results = []
 
 for combination in combinations_list:
     metrics = {}
@@ -104,12 +102,12 @@ for combination in combinations_list:
         row = data[data['STRIKE'] == strike]
         if option_type == 'call':
             IV = row['IV'].values[0]
-            LTP = row['LTP'].values[0]
+            LTP = row['CALLS_LTP'].values[0]
         else:
-            IV = row['IV.1'].values[0]
-            LTP = row['LTP.1'].values[0]
+            IV = row['PUTS_IV'].values[0]
+            LTP = row['PUTS_LTP'].values[0]
 
-        S = row['Spot_Price'].values[0]  # Spot price (needs to be provided)
+        S = spot_price  # Spot price
         sigma = IV / 100
 
         # Calculate BSM price
@@ -142,9 +140,6 @@ for combination in combinations_list:
 results[:5]
 ```
 
-### Constructing the Decision Matrix:
-Now we populate the decision matrix with calculated values.
-
 #### Construct Decision Matrix:
 ```python
 decision_matrix = np.array([
@@ -155,10 +150,7 @@ decision_matrix = np.array([
 print("Decision Matrix:\n", decision_matrix)
 ```
 
-### Applying TOPSIS Method:
-Finally, apply the TOPSIS method to rank these combinations.
-
-#### Applying TOPSIS:
+#### Apply TOPSIS Method:
 ```python
 from sklearn.preprocessing import MinMaxScaler
 
@@ -190,4 +182,4 @@ print("Best strategy:", best_strategy)
 print("TOPSIS score:", topsis_scores[best_index])
 ```
 
-This code outlines the complete process from loading the data to identifying the best options strategy using the TOPSIS method. You can execute this code within your environment to get the best strategy based on the provided data.
+This code will generate all possible combinations of options strategies, calculate the necessary metrics, construct a decision matrix, and apply the TOPSIS method to identify the best strategy based on the given weights. Make sure to execute this code within your Python environment to see the results.
