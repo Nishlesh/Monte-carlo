@@ -1,0 +1,146 @@
+import pandas as pd
+from itertools import product
+from scipy.stats import norm
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+
+# Load the Excel file
+file_path = '/mnt/data/option-chain-ED-NIFTY-27-Jun-2024.xlsx'
+data = pd.read_excel(file_path)
+
+# Spot price
+spot_price = 22791.05
+
+# Filter out the relevant data
+calls = data[['STRIKE', 'CALLS_LTP', 'CALLS_IV']].dropna()
+puts = data[['STRIKE', 'PUTS_LTP', 'PUTS_IV']].dropna()
+
+# Find ATM strike
+atm_strike = min(data['STRIKE'], key=lambda x: abs(x - spot_price))
+
+# For strangles, select OTM strikes only:
+# - For calls: strikes above ATM
+# - For puts: strikes below ATM
+otm_call_strikes = sorted([strike for strike in data['STRIKE'] if strike > atm_strike])[:10]
+otm_put_strikes = sorted([strike for strike in data['STRIKE'] if strike < atm_strike])[-10:]
+
+# For simplicity, we consider two strategy types: long strangle and short strangle.
+# Each strangle consists of one call and one put.
+# We'll create combinations for each pair and each action.
+strategy_actions = [('buy', 'buy'), ('sell', 'sell')]
+combinations_list = []
+
+for call_strike in otm_call_strikes:
+    for put_strike in otm_put_strikes:
+        for actions in strategy_actions:
+            # Each combination is a list of two options:
+            # First option: call, second option: put.
+            combination = [
+                ('call', actions[0], call_strike),
+                ('put', actions[1], put_strike)
+            ]
+            combinations_list.append(combination)
+
+# Black-Scholes-Merton (BSM) pricing function
+def bsm_price(S, K, T, r, sigma, option_type='call'):
+    d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    if option_type == 'call':
+        price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+    else:
+        price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+    return price
+
+# Placeholder values for interest rate and time to expiration
+r = 0.01         # Risk-free interest rate (e.g., 1%)
+T = 21 / 365     # Time to expiration in years
+
+results = []
+
+for combination in combinations_list:
+    metrics = {}
+    total_premium = 0
+    total_max_profit = 0
+    total_max_loss = 0
+    total_probability_of_profit = 0
+    
+    for option in combination:
+        option_type, action, strike = option
+        row = data[data['STRIKE'] == strike]
+        if option_type == 'call':
+            IV = row['CALLS_IV'].values[0]
+            LTP = row['CALLS_LTP'].values[0]
+        else:
+            IV = row['PUTS_IV'].values[0]
+            LTP = row['PUTS_LTP'].values[0]
+            
+        S = spot_price
+        sigma = IV / 100  # convert percentage to decimal
+
+        # Calculate theoretical option price using BSM
+        option_price = bsm_price(S, strike, T, r, sigma, option_type)
+        
+        # For simplicity, we define max profit/loss as follows:
+        # For a long option (buy): max profit is theoretically unlimited (but we use a proxy: option price - LTP)
+        # and max loss equals the premium paid (LTP).
+        # For a short option (sell): max profit is the premium received (LTP) and
+        # max loss is defined as the difference between the option price and premium received.
+        if action == 'buy':
+            max_profit = option_price - LTP  # proxy measure
+            max_loss = LTP
+        else:
+            max_profit = LTP
+            max_loss = option_price - LTP
+        
+        # Calculate probability of profit (simplified measure)
+        # For a call option, use norm.cdf(d1); for a put, use 1 - norm.cdf(d1)
+        d1 = (np.log(S / strike) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+        probability_of_profit = norm.cdf(d1) if option_type == 'call' else 1 - norm.cdf(d1)
+        
+        total_premium += option_price
+        total_max_profit += max_profit
+        total_max_loss += max_loss
+        total_probability_of_profit += probability_of_profit
+    
+    # Average the probability over the two legs
+    metrics['total_premium'] = total_premium
+    metrics['total_max_profit'] = total_max_profit
+    metrics['total_max_loss'] = total_max_loss
+    metrics['total_probability_of_profit'] = total_probability_of_profit / 2  
+    results.append(metrics)
+
+# Create decision matrix: we use three criteria
+# 1. Average probability of profit
+# 2. Total maximum profit
+# 3. Ratio of total maximum profit to total maximum loss
+decision_matrix = np.array([
+    [result['total_probability_of_profit'], result['total_max_profit'], result['total_max_profit'] / result['total_max_loss']]
+    for result in results
+])
+
+# Placeholder weights (user defined)
+weights = np.array([0.5, 0.3, 0.2])  # Adjust weights as needed
+
+# Normalize the decision matrix using MinMaxScaler
+scaler = MinMaxScaler()
+normalized_matrix = scaler.fit_transform(decision_matrix)
+
+# TOPSIS function to rank strategies
+def topsis(matrix, weights):
+    weighted_matrix = matrix * weights
+    ideal_solution = np.max(weighted_matrix, axis=0)
+    negative_ideal_solution = np.min(weighted_matrix, axis=0)
+    distance_to_ideal = np.sqrt(np.sum((weighted_matrix - ideal_solution)**2, axis=1))
+    distance_to_negative_ideal = np.sqrt(np.sum((weighted_matrix - negative_ideal_solution)**2, axis=1))
+    topsis_score = distance_to_negative_ideal / (distance_to_ideal + distance_to_negative_ideal)
+    return topsis_score
+
+# Calculate TOPSIS scores
+topsis_scores = topsis(normalized_matrix, weights)
+
+# Identify the best strangle strategy based on TOPSIS
+best_index = np.argmax(topsis_scores)
+best_strategy = combinations_list[best_index]
+
+print("Best strangle strategy:", best_strategy)
+print("TOPSIS score:", topsis_scores[best_index])
